@@ -4,6 +4,7 @@ import { fetchDepth, fetchFunding, fetchKlines, fetchSpotFilters, fetchTicker } 
 import { bookLevels, supportResistance } from "../market/levels.js";
 import { samplePortfolioInsight } from "../market/portfolio.js";
 import { auditToken, inspectToken } from "../skills/hub.js";
+import { runCalibrationPanel } from "../calibration/panel.js";
 import { asRecord, fetchJson, str } from "../http.js";
 import type { AlphaReport, MarketRow, SkillSignal } from "../types.js";
 
@@ -63,11 +64,12 @@ async function loadSkillSignal(symbol: string): Promise<SkillSignal> {
 }
 
 export async function runAlphaReport(symbol = DEFAULT_SYMBOL): Promise<AlphaReport> {
-  const [row, filters, token, skillSignal] = await Promise.all([
+  const [row, filters, token, skillSignal, calibration] = await Promise.all([
     loadMarketRow(symbol),
     fetchSpotFilters(symbol),
     inspectToken(symbol.startsWith("BNB") ? "WBNB" : symbol.replace("USDT", "")),
     loadSkillSignal(symbol),
+    runCalibrationPanel(),
   ]);
   const contract = token.contractAddress || WBNB_BSC;
   const audit = await auditToken(token.chainId || "56", contract);
@@ -80,7 +82,7 @@ export async function runAlphaReport(symbol = DEFAULT_SYMBOL): Promise<AlphaRepo
       note: "account capability present but no tool name is assumed; sample Agentic-sub book until bind. Never main-account.",
     };
   }
-  return { symbol, row, filters, token, audit, skillSignal, portfolio };
+  return { symbol, row, filters, token, audit, skillSignal, portfolio, calibration };
 }
 
 /** CLI `brief` entry — same Alpha Report as the ScoutPay loop. */

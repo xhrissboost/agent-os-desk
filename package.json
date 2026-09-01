@@ -1,7 +1,7 @@
 {
   "name": "@desk/agent",
-  "version": "1.1.0",
-  "description": "Desk — Binance Agent Native Track A agent. ScoutPay loop: Alpha Report → x402 gated memo → min-notional BNBUSDT SPOT → Earn intent.",
+  "version": "1.2.0",
+  "description": "Desk — Binance Agent Native Track A agent. ScoutPay loop: BTC calibration → x402 gated memo → min-notional BNBUSDT SPOT → Earn intent.",
   "type": "module",
   "license": "MIT",
   "engines": {

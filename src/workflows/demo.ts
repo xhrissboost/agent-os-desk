@@ -9,6 +9,7 @@ import { mcpStatus } from "../mcp/client.js";
 import { parseConfirms, liveRequested } from "../confirms.js";
 import { buildChecklist } from "../checklist.js";
 import { formatDemoReport } from "../report.js";
+import { writeCalibrationArtifacts } from "../calibration/heatmap.js";
 import { runAlphaReport } from "./data.js";
 import { executeSpotBuy, minNotionalBuy } from "./trading.js";
 import { runPaymentWorkflow } from "./payments.js";
@@ -58,6 +59,11 @@ export async function runDemo(argv: string[] = process.argv): Promise<DemoReport
 
 export async function printDemo(argv: string[] = process.argv): Promise<number> {
   const report = await runDemo(argv);
+  try {
+    writeCalibrationArtifacts(report.data.calibration);
+  } catch {
+    /* artifacts are best-effort for the film path */
+  }
   process.stdout.write(`${formatDemoReport(report)}\n`);
   return 0;
 }

@@ -125,6 +125,58 @@ export type TokenAudit = {
   source: DataSource;
 };
 
+export type CalibStatus =
+  | "reliable"
+  | "agree-no-edge"
+  | "overconfident"
+  | "underconfident"
+  | "no-sample";
+
+export type CalibModelId = "gam-logistic" | "gaussian-nb" | "gbdt" | "baseline";
+
+export type CalibCell = {
+  horizon: number;
+  lookback: number;
+  predictedPct: number;
+  realizedPct: number;
+  /** realizedPct − predictedPct, in percentage points (screenshot 偏差). */
+  biasPt: number;
+  n: number;
+  status: CalibStatus;
+};
+
+export type CalibGridSummary = {
+  reliable: number;
+  agree: number;
+  over: number;
+  under: number;
+  empty: number;
+  total: number;
+};
+
+export type CalibGrid = {
+  id: CalibModelId;
+  zh: string;
+  en: string;
+  cells: CalibCell[];
+  summary: CalibGridSummary;
+};
+
+export type CalibrationPanel = {
+  target: "BTC";
+  symbol: string;
+  interval: string;
+  event: string;
+  klineCount: number;
+  source: DataSource;
+  disclaimer: string;
+  baseline: CalibGrid;
+  models: CalibGrid[];
+  selected: CalibGrid;
+  gateOk: boolean;
+  gateDetail: string;
+};
+
 export type AlphaReport = {
   symbol: string;
   row: MarketRow;
@@ -133,6 +185,7 @@ export type AlphaReport = {
   audit: TokenAudit;
   skillSignal: SkillSignal;
   portfolio: PortfolioInsight;
+  calibration: CalibrationPanel;
 };
 
 export type Signal = {

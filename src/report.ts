@@ -1,5 +1,6 @@
 import { DESK_VERSION, GITHUB_URL, LOOP_NICKNAME } from "./config.js";
 import { banner, fundingPct, pct, rule, truncate, usd } from "./format.js";
+import { formatCalibrationAnsi } from "./calibration/heatmap.js";
 import type { DemoReport } from "./types.js";
 
 function tick(ok: boolean): string {
@@ -20,6 +21,12 @@ export function formatDemoReport(report: DemoReport): string {
   lines.push("");
 
   lines.push(rule("1. DATA  Alpha Report"));
+  const cal = report.data.calibration;
+  lines.push(
+    ` 标的 BTC  selected ${cal.selected.zh}  ${cal.selected.summary.reliable}/${cal.selected.summary.total} 基本靠谱`,
+  );
+  lines.push(formatCalibrationAnsi(cal, { full: false }));
+  lines.push("");
   const row = report.data.row;
   const src = row.source.host ?? row.source.kind;
   lines.push(

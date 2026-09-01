@@ -1,13 +1,14 @@
 ---
 name: desk
 description: >
-  Confirm-first Binance Agent Native desk. ScoutPay loop: Alpha Report on
-  BNBUSDT, pay a counterparty via x402 for a gated memo, restate a min-notional
-  SPOT MARKET buy, park leftover USDT as an Earn intent. Run `npx desk demo`.
-  Never skip --confirm-pay / --confirm-spot / --confirm-defi. Never place live
-  orders unless DESK_LIVE=1 and those confirms are set and a trade tool is bound.
+  Confirm-first Binance Agent Native desk. ScoutPay loop: BTCUSDT
+  calibration heatmap, pay a counterparty via x402 for a gated memo,
+  restate a min-notional BNBUSDT SPOT MARKET buy, park leftover USDT
+  as an Earn intent. Run `npx desk demo`. Never skip --confirm-pay /
+  --confirm-spot / --confirm-defi. Never place live orders unless
+  DESK_LIVE=1 and those confirms are set and a trade tool is bound.
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   author: desk
 license: MIT
 ---
@@ -21,7 +22,7 @@ Desk is a TypeScript agent (`@desk/agent`) for Binance **Agent Native / Binance 
 | User intent | Command |
 |---|---|
 | Full ScoutPay loop | `npx desk demo` |
-| Alpha Report | `npx desk brief` |
+| BTC calibration heatmap | `npx desk brief` |
 | Min-notional SPOT ticket | `npx desk signal` |
 | 402 → gated memo | `npx desk pay` |
 | Earn deposit intent | `npx desk chain` |

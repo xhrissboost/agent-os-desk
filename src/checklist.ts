@@ -67,6 +67,13 @@ export function buildChecklist(opts: {
         : "ticker/24h missing",
     },
     {
+      id: "btc-calibration",
+      ok: report.calibration.gateOk,
+      gate: true,
+      label: "BTC calibration not majority 明显高估 on short horizon",
+      detail: report.calibration.gateDetail,
+    },
+    {
       id: "spot-usdt",
       ok: liveUsdtOk,
       gate: live,
