@@ -3,6 +3,17 @@
  * Live demo prefers api.binance.com → data-api.binance.vision → www.binance.com.
  */
 export const FIXTURE_TICKER: Record<string, unknown> = {
+  BNBUSDT: {
+    symbol: "BNBUSDT",
+    priceChangePercent: "-1.641",
+    lastPrice: "680.81000000",
+    bidPrice: "680.80000000",
+    askPrice: "680.81000000",
+    volume: "412000.4",
+    quoteVolume: "290140000",
+    highPrice: "698.10",
+    lowPrice: "672.20",
+  },
   BTCUSDT: {
     symbol: "BTCUSDT",
     priceChange: "-1804.47000000",
@@ -40,6 +51,17 @@ export const FIXTURE_TICKER: Record<string, unknown> = {
 };
 
 export const FIXTURE_DEPTH: Record<string, unknown> = {
+  BNBUSDT: {
+    lastUpdateId: 1,
+    bids: [
+      ["680.80", "40"],
+      ["680.70", "22"],
+    ],
+    asks: [
+      ["680.81", "18"],
+      ["680.90", "30"],
+    ],
+  },
   BTCUSDT: {
     lastUpdateId: 1,
     bids: [
@@ -92,12 +114,20 @@ function syntheticKlines(close: number, drift: number): unknown[] {
 }
 
 export const FIXTURE_KLINES: Record<string, unknown> = {
+  BNBUSDT: syntheticKlines(680.81, -0.016),
   BTCUSDT: syntheticKlines(77182.67, -0.02),
   ETHUSDT: syntheticKlines(3872.15, -0.018),
   SOLUSDT: syntheticKlines(198.42, 0.03),
 };
 
 export const FIXTURE_FUNDING: Record<string, unknown> = {
+  BNBUSDT: {
+    symbol: "BNBUSDT",
+    markPrice: "680.50",
+    indexPrice: "680.70",
+    lastFundingRate: "0.00004100",
+    nextFundingTime: 1_788_307_200_000,
+  },
   BTCUSDT: {
     symbol: "BTCUSDT",
     markPrice: "77138.80",
@@ -124,4 +154,22 @@ export const FIXTURE_FUNDING: Record<string, unknown> = {
 export const GEO_BLOCK_BODY = {
   code: 0,
   msg: "Service unavailable from a restricted location according to 'b. Eligibility' in https://www.binance.com/en/terms.",
+};
+
+export const FIXTURE_EXCHANGE_INFO = {
+  timezone: "UTC",
+  symbols: [
+    {
+      symbol: "BNBUSDT",
+      filters: [
+        { filterType: "LOT_SIZE", minQty: "0.00100000", stepSize: "0.00100000" },
+        {
+          filterType: "NOTIONAL",
+          minNotional: "5.00000000",
+          applyMinToMarket: true,
+          maxNotional: "9000000.00000000",
+        },
+      ],
+    },
+  ],
 };

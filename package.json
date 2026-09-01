@@ -1,7 +1,7 @@
 {
   "name": "@desk/agent",
-  "version": "1.0.0",
-  "description": "Desk — Binance Agent Native / Agent OS Track A desk: analysis → risk-limited signal → agent payment → onchain intent.",
+  "version": "1.1.0",
+  "description": "Desk — Binance Agent Native Track A agent. ScoutPay loop: Alpha Report → x402 gated memo → min-notional BNBUSDT SPOT → Earn intent.",
   "type": "module",
   "license": "MIT",
   "engines": {

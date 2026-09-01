@@ -29,7 +29,7 @@ export function samplePortfolioInsight(rows: MarketRow[]): PortfolioInsight {
   return buildPortfolioInsight(
     toBalances(SAMPLE_PORTFOLIO),
     rows,
-    { kind: "fixture", note: "sample book — MCP account not connected" },
+    { kind: "fixture", note: "sample Agentic-sub book — MCP account not connected; never main-account" },
   );
 }
 
@@ -84,15 +84,18 @@ export function buildPortfolioInsight(
     notes.push("24h mark-to-market is positive; do not let the print raise max size.");
   }
   const cash = weights.find((w) => w.asset === "USDT" || w.asset === "USDC");
+  const usdt = balances.find((b) => b.asset === "USDT");
+  const usdtFree = usdt?.free ?? 0;
   if (cash && cash.weightPct < 15) {
     notes.push("stablecoin buffer under 15% — dry-run only until cash is rebuilt.");
   }
-  notes.push("Agent cannot withdraw and cannot pull from the main account. Writes stay confirm-first.");
+  notes.push("Sample/Agentic-sub book only. Never a main-account snapshot. Agent cannot withdraw.");
 
   return {
     source,
     balances,
     totalUsd,
+    usdtFree,
     weights,
     estimatedPnl24hUsd,
     concentration,

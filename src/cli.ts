@@ -1,33 +1,40 @@
 #!/usr/bin/env node
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { DESK_VERSION } from "./config.js";
+import { DESK_VERSION, DEFAULT_SYMBOL, LOOP_NICKNAME } from "./config.js";
 import { banner, fundingPct, pct, usd } from "./format.js";
 import { mcpStatus } from "./mcp/client.js";
 import { printDemo } from "./workflows/demo.js";
-import { runDataWorkflow } from "./workflows/data.js";
+import { runAlphaReport } from "./workflows/data.js";
 import { riskFooter, runSignalWorkflow } from "./workflows/trading.js";
 import { runPaymentWorkflow } from "./workflows/payments.js";
 import { runOnchainWorkflow } from "./workflows/onchain.js";
 
 function usage(): string {
-  return `${banner("DESK", "analysis → signal → agent payment → onchain intent")}
+  return `${banner("DESK", `${LOOP_NICKNAME} · pay-for-alpha treasury loop`)}
 Usage:
-  desk demo          Run all four Track A workflows (judge path)
-  desk brief         Data & Analysis only
-  desk signal        Trading signal + dry-run executor
-  desk pay           B402 bazaar + local x402 settlement
-  desk chain         Onchain inspect + DeFi intent (dry-run)
+  desk demo          ScoutPay loop (judge path): Alpha Report → 402 memo → min-notional SPOT → Earn intent
+  desk brief         Alpha Report only (BNBUSDT)
+  desk signal        Restated BNBUSDT SPOT MARKET min-notional ticket
+  desk pay           x402 v2 merchant 402 → PAYMENT-SIGNATURE → gated memo
+  desk chain         DeFi Earn deposit INTENT (1–5 USDT leftover)
   desk mcp-status    Probe Binance MCP without crashing if OAuth is missing
 
+Confirms (never skipped; a bare --confirm does nothing):
+  --confirm-pay      operator confirms the x402 payment
+  --confirm-spot     operator confirms the SPOT MARKET ticket
+  --confirm-defi     operator confirms the Earn deposit intent
+
 Flags:
-  --confirm          Required together with DESK_LIVE=1 to attempt a live send
   --json             Machine-readable stdout
 
 Env:
-  DESK_LIVE=1        Opt in to live MCP send (still needs --confirm AND a bound trade tool)
+  DESK_LIVE=1        Opt in to live MCP send (still needs --confirm-spot AND a bound trade tool)
   DESK_MCP_TOKEN     Optional bearer from an already-completed OAuth session
   DESK_MCP_URL       Default https://agent.binance.com/mcp/agentic
+
+Track B is a separate first-10k race (spot + futures + convert, ~80 USDT in the Agentic sub).
+This repo does not execute Track B trades.
 
 v${DESK_VERSION}  ·  Node 22+  ·  no API keys for the demo
 `;
@@ -60,35 +67,30 @@ async function main(argv: string[]): Promise<number> {
       process.stdout.write(`${DESK_VERSION}\n`);
       return 0;
     case "demo":
-      return printDemo();
+      return printDemo(argv);
     case "brief": {
-      const data = await runDataWorkflow();
+      const data = await runAlphaReport(DEFAULT_SYMBOL);
       emit(data, asJson, () => {
-        const lines = [banner("DESK brief", "Data & Analysis")];
-        for (const row of data.rows) {
-          lines.push(
-            `${row.symbol}  last ${usd(row.ticker.lastPrice)}  24h ${pct(row.ticker.priceChangePercent)}  imb ${row.book.imbalance.toFixed(3)}  fund ${row.funding ? fundingPct(row.funding.lastFundingRate) : "n/a"}  src ${row.source.host ?? row.source.kind}`,
-          );
-        }
-        lines.push(
-          `portfolio $${usd(data.portfolio.totalUsd)}  ${data.portfolio.concentration}`,
-        );
-        return lines.join("\n");
+        const row = data.row;
+        return [
+          banner("DESK brief", "Alpha Report"),
+          `${row.symbol}  last ${usd(row.ticker.lastPrice)}  24h ${pct(row.ticker.priceChangePercent)}  imb ${row.book.imbalance.toFixed(3)}  fund ${row.funding ? fundingPct(row.funding.lastFundingRate) : "n/a"}  src ${row.source.host ?? row.source.kind}`,
+          `minNotional ${data.filters.minNotional} USDT`,
+          `audit ${data.audit.riskLevelEnum ?? "n/a"}  ${data.skillSignal.summary}`,
+        ].join("\n");
       });
       return 0;
     }
     case "signal": {
-      const out = await runSignalWorkflow("BTCUSDT");
+      const out = await runSignalWorkflow(DEFAULT_SYMBOL);
       emit(out, asJson, () =>
         [
-          banner("DESK signal", "Trading Workflows"),
-          `${out.signal.symbol}  ${out.signal.side}  conf ${(out.signal.confidence * 100).toFixed(0)}%`,
+          banner("DESK signal", "SPOT MARKET min-notional"),
+          `${out.signal.symbol}  ${out.signal.side}  quoteOrderQty ${out.signal.suggestedSize.quoteUsd}`,
           out.signal.rationale,
-          `size $${usd(out.signal.suggestedSize.quoteUsd)}  ${out.execution.mode}`,
+          out.execution.mode,
           out.execution.note,
-          Object.keys(out.execution.payload).length
-            ? JSON.stringify(out.execution.payload, null, 2)
-            : "",
+          Object.keys(out.execution.payload).length ? JSON.stringify(out.execution.payload, null, 2) : "",
           riskFooter(),
         ]
           .filter(Boolean)
@@ -97,14 +99,18 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     }
     case "pay": {
-      const pay = await runPaymentWorkflow();
+      const report = await runAlphaReport(DEFAULT_SYMBOL);
+      const pay = await runPaymentWorkflow(report);
       emit(pay, asJson, () =>
         [
-          banner("DESK pay", "Payment Workflows · B402 / x402"),
-          `bazaar ${pay.listed}  pick ${pay.picked?.resource ?? "none"}`,
+          banner("DESK pay", "x402 v2 merchant"),
+          `amount $${pay.amountUsd.toFixed(2)}  READY_TO_SIGN=${pay.readyToSign}  rail=${pay.rail}`,
           ...pay.trace.map((s) => `${s.status}  ${s.title} — ${s.detail}`),
-          `receipt ${pay.receipt.txHash}  chain ${pay.receipt.chainId}`,
-        ].join("\n"),
+          pay.memo ? `memo ${pay.memo.title}` : "",
+          pay.receipt ? `receipt ${pay.receipt.txHash}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
       );
       return 0;
     }
@@ -112,9 +118,8 @@ async function main(argv: string[]): Promise<number> {
       const onchain = await runOnchainWorkflow();
       emit(onchain, asJson, () =>
         [
-          banner("DESK chain", "Onchain Workflows · Skills Hub"),
-          `${onchain.token.symbol}  ${onchain.token.contractAddress}`,
-          `audit ${onchain.audit.riskLevelEnum ?? "n/a"}`,
+          banner("DESK chain", "DeFi Earn deposit INTENT"),
+          `${onchain.intent.amountUsdt} USDT  ${onchain.intent.action}`,
           onchain.intent.summary,
           onchain.intent.bawCommand,
           onchain.intent.note,

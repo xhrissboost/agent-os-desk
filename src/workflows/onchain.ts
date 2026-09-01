@@ -1,7 +1,7 @@
 export {
   auditToken,
   inspectToken,
-  proposeDefiIntent,
+  proposeEarnDeposit,
   runOnchainWorkflow,
   skillCliPath,
   walletSkillInstalled,

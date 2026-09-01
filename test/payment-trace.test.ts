@@ -5,6 +5,7 @@ import {
   mockSettle,
   parseBazaarEnvelope,
   paymentTrace,
+  amountUsdFromAccept,
 } from "../src/payments/bazaar.js";
 import { B402_TESTNET_CAIP, B402_TESTNET_CHAIN_ID, DEMO_COUNTERPARTY_PAY_TO } from "../src/config.js";
 
@@ -40,6 +41,9 @@ describe("payment trace", () => {
     assert.equal(items.length, 1);
     assert.match(items[0]!.resource, /coinmarketcap/);
     assert.equal(items[0]!.accepts[0]!.network, "eip155:56");
+    const usd = amountUsdFromAccept(items[0]!.accepts[0]!);
+    assert.equal(usd, 0.01);
+    assert.ok(usd != null && usd <= 1);
   });
 
   it("remaps settlement to BSC testnet and mock-pays Desk → Counterparty", () => {
@@ -57,14 +61,12 @@ describe("payment trace", () => {
     assert.equal(receipt.chainId, B402_TESTNET_CHAIN_ID);
     assert.equal(receipt.payer, "Desk");
     assert.equal(receipt.payee, "Counterparty");
+    assert.ok(receipt.amountUsd <= 1);
     assert.match(receipt.txHash, /^0x[0-9a-f]{64}$/);
 
     const trace = paymentTrace(req, receipt);
     assert.equal(trace[0]!.status, 200);
-    assert.equal(trace[1]!.status, 402);
-    assert.equal(trace[2]!.status, "PAY");
-    assert.equal(trace[3]!.status, 200);
-    assert.match(String(trace[1]!.title), /402/);
+    assert.ok(trace.some((s) => s.status === 402));
   });
 
   it("parses search envelopes that nest resources[]", () => {

@@ -3,19 +3,24 @@ import {
   B402_TESTNET_CAIP,
   B402_TESTNET_CHAIN_ID,
   DEMO_COUNTERPARTY_PAY_TO,
+  MEMO_PRICE_USD,
   USD1_BSC,
+  X402_MAX_USD,
 } from "../config.js";
 import { asRecord, envelopeOk, fetchJson, str } from "../http.js";
 import { iso } from "../format.js";
 import type {
+  AlphaReport,
   BazaarAccept,
   BazaarResource,
   DataSource,
+  GatedMemo,
   PaymentRequired,
   PaymentReceipt,
   PaymentRun,
   PaymentTraceStep,
 } from "../types.js";
+import { demoPaymentSignature, encodePaymentRequired, merchantRequirement, merchantRespond } from "./merchant.js";
 
 const FIXTURE_BAZAAR: BazaarResource[] = [
   {
@@ -170,7 +175,22 @@ export function buildPaymentRequired(
   };
 }
 
-export function mockSettle(requirement: PaymentRequired): PaymentReceipt {
+export function amountUsdFromAccept(accept: BazaarAccept): number | null {
+  const atomic = Number(accept.maxAmountRequired ?? accept.amount ?? "");
+  if (!Number.isFinite(atomic) || atomic <= 0) return null;
+  return atomic / 1e18;
+}
+
+export function cheapBazaarListings(items: BazaarResource[]): BazaarResource[] {
+  return items.filter((item) =>
+    item.accepts.some((a) => {
+      const usd = amountUsdFromAccept(a);
+      return usd != null && usd > 0 && usd <= X402_MAX_USD;
+    }),
+  );
+}
+
+export function mockSettle(requirement: PaymentRequired, amountUsd = MEMO_PRICE_USD): PaymentReceipt {
   const accept = requirement.accepts[0]!;
   const seed = `${requirement.resource.url}:${accept.amount}:${iso()}`;
   const txHash = `0x${Buffer.from(seed).toString("hex").slice(0, 64).padEnd(64, "0")}`;
@@ -181,6 +201,7 @@ export function mockSettle(requirement: PaymentRequired): PaymentReceipt {
     payer: "Desk",
     payee: "Counterparty",
     amount: accept.amount,
+    amountUsd,
     asset: accept.asset,
     txHash,
     settledAt: iso(),
@@ -190,65 +211,105 @@ export function mockSettle(requirement: PaymentRequired): PaymentReceipt {
 
 export function paymentTrace(
   requirement: PaymentRequired,
-  receipt: PaymentReceipt,
+  receipt: PaymentReceipt | null,
 ): PaymentTraceStep[] {
-  const encoded = Buffer.from(JSON.stringify(requirement)).toString("base64");
-  return [
+  const encoded = encodePaymentRequired(requirement);
+  const steps: PaymentTraceStep[] = [
     {
       status: 200,
-      title: "Desk GET /signal-receipt",
-      detail: "Counterparty agent exposes a paid resource. No PAYMENT-SIGNATURE yet.",
+      title: "Desk GET /alpha-memo",
+      detail: "Counterparty merchant: gated Alpha Memo. No PAYMENT-SIGNATURE yet.",
     },
     {
       status: 402,
       title: "HTTP 402 Payment Required",
-      detail: `PAYMENT-REQUIRED header (${encoded.length} b64 bytes). Network remapped to ${B402_TESTNET_CAIP}.`,
+      detail: `PAYMENT-REQUIRED (${encoded.length} b64 bytes). x402 v2 · ${requirement.accepts[0]?.network ?? ""} · $${MEMO_PRICE_USD}.`,
       body: requirement,
     },
     {
       status: "PAY",
-      title: "Desk signs local x402 payload",
-      detail: "Authenticated Binance /papi/v2/b402/settle is not used (no partner key). Local mock on chain 97.",
-    },
-    {
-      status: 200,
-      title: "Counterparty returns receipt",
-      detail: `PAYMENT-RESPONSE settled mock tx ${receipt.txHash.slice(0, 18)}…`,
-      body: receipt,
+      title: "Desk attaches PAYMENT-SIGNATURE",
+      detail: "Local merchant only. Authenticated /papi/v2/b402/settle is not used (no partner key).",
     },
   ];
+  if (receipt) {
+    steps.push({
+      status: 200,
+      title: "Counterparty returns gated memo + receipt",
+      detail: `PAYMENT-RESPONSE ${receipt.txHash.slice(0, 18)}…`,
+      body: receipt,
+    });
+  }
+  return steps;
 }
 
-export async function runPaymentWorkflow(): Promise<PaymentRun> {
+function buildMemo(report?: AlphaReport): GatedMemo {
+  const row = report?.row;
+  const body = row
+    ? [
+        `${row.symbol} last ${row.ticker.lastPrice}`,
+        `24h ${row.ticker.priceChangePercent}%`,
+        `imb ${row.book.imbalance.toFixed(3)}`,
+        `fund ${row.funding ? row.funding.lastFundingRate : "n/a"}`,
+        `S ${row.levels.support} R ${row.levels.resistance}`,
+        `audit ${report?.audit.riskLevelEnum ?? "n/a"}`,
+        report?.skillSignal.summary ?? "",
+      ].join(" · ")
+    : "Alpha Memo placeholder";
+  return {
+    title: `ScoutPay Alpha Memo · ${report?.symbol ?? "BNBUSDT"}`,
+    body,
+    symbol: report?.symbol ?? "BNBUSDT",
+  };
+}
+
+export async function runPaymentWorkflow(report?: AlphaReport): Promise<PaymentRun> {
   const { items, source } = await fetchBazaarResources();
-  const searched = await searchBazaar("market");
-  const picked =
-    searched.find((r) => /market|quote|crypto/i.test(`${r.description} ${r.resource}`)) ??
-    items[0] ??
-    FIXTURE_BAZAAR[0]!;
+  const cheap = cheapBazaarListings(items);
+  const memo = buildMemo(report);
+  const requirement = merchantRequirement();
+  const amountUsd = MEMO_PRICE_USD;
+  const readyToSign = amountUsd > 0 && amountUsd <= X402_MAX_USD;
+  const signatureHeader = demoPaymentSignature(requirement);
+  const fulfilled = merchantRespond(signatureHeader, memo);
+  const receipt: PaymentReceipt | null =
+    fulfilled.status === 200 && fulfilled.receiptHash
+      ? {
+          settlement: "merchant",
+          chainId: B402_TESTNET_CHAIN_ID,
+          network: B402_TESTNET_CAIP,
+          payer: "Desk",
+          payee: "Counterparty",
+          amount: requirement.accepts[0]!.amount,
+          amountUsd,
+          asset: requirement.accepts[0]!.asset,
+          txHash: fulfilled.receiptHash,
+          settledAt: iso(),
+          resource: requirement.resource.url,
+        }
+      : null;
 
-  const merchant = picked.accepts[0]?.payTo
-    ? await merchantBazaar(picked.accepts[0].payTo)
-    : [];
-
-  const requirement = buildPaymentRequired(picked, {
-    description: "Agent-to-agent: Counterparty notarizes Desk's signal blotter (demo)",
-  });
-  const receipt = mockSettle(requirement);
   const trace = paymentTrace(requirement, receipt);
-
-  if (merchant.length) {
-    trace[0] = {
-      ...trace[0]!,
-      detail: `${trace[0]!.detail} Merchant catalog matched ${merchant.length} resource(s) for payTo.`,
-    };
-  }
+  trace.splice(1, 0, {
+    status: "SCAN",
+    title: "B402 bazaar scan",
+    detail:
+      cheap.length > 0
+        ? `${cheap.length}/${items.length} public listings ≤ $${X402_MAX_USD} — still using in-repo merchant so the gated memo works without a partner settle key.`
+        : `${items.length} bazaar listings scanned; none ≤ $${X402_MAX_USD} with parseable amount. In-repo merchant is the demo.`,
+  });
 
   return {
+    rail: "merchant",
     bazaarSource: source,
     listed: items.length,
-    picked,
+    cheapListings: cheap.length,
+    picked: cheap[0] ?? null,
     requirement,
+    amountUsd,
+    readyToSign,
+    signatureHeader,
+    memo: fulfilled.memo ?? null,
     trace,
     receipt,
   };

@@ -2,7 +2,16 @@ import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { B402_TESTNET_CHAIN_ID, SKILLS_HUB_REPO, USDT_BSC, WEB3_API, WEB3_AUDIT_UA, WEB3_SKILL_UA } from "../config.js";
+import {
+  B402_TESTNET_CHAIN_ID,
+  EARN_DEPOSIT_MAX_USDT,
+  EARN_DEPOSIT_MIN_USDT,
+  SKILLS_HUB_REPO,
+  USDT_BSC,
+  WEB3_API,
+  WEB3_AUDIT_UA,
+  WEB3_SKILL_UA,
+} from "../config.js";
 import { asRecord, envelopeOk, fetchJson, num, str } from "../http.js";
 import type { DataSource, DefiIntent, OnchainRun, TokenAudit, TokenInspect } from "../types.js";
 
@@ -134,6 +143,7 @@ export async function auditToken(chainId: string, contractAddress: string): Prom
         hasResult: false,
         isSupported: false,
         hits: [],
+        honeypot: false,
         source: { kind: "skills-hub", host, note: "audit envelope empty" },
       };
     }
@@ -149,6 +159,7 @@ export async function auditToken(chainId: string, contractAddress: string): Prom
         }
       }
     }
+    const honeypot = hits.some((h) => /honeypot/i.test(h));
     return {
       hasResult: Boolean(data.hasResult),
       isSupported: Boolean(data.isSupported),
@@ -157,6 +168,7 @@ export async function auditToken(chainId: string, contractAddress: string): Prom
       buyTax: extra ? str(extra.buyTax) || undefined : undefined,
       sellTax: extra ? str(extra.sellTax) || undefined : undefined,
       hits,
+      honeypot,
       source: { kind: "skills-hub", host, note: "query-token-audit HTTP adapter" },
     };
   } catch (err) {
@@ -164,6 +176,7 @@ export async function auditToken(chainId: string, contractAddress: string): Prom
       hasResult: false,
       isSupported: false,
       hits: [],
+      honeypot: false,
       source: {
         kind: "fixture",
         note: `audit unavailable (${err instanceof Error ? err.message : String(err)})`,
@@ -172,30 +185,30 @@ export async function auditToken(chainId: string, contractAddress: string): Prom
   }
 }
 
-export function proposeDefiIntent(token: TokenInspect, audit: TokenAudit): DefiIntent {
+export function proposeEarnDeposit(usdtLeftover: number): DefiIntent {
   const installed = walletSkillInstalled();
-  const blocked = audit.hasResult && audit.isSupported && (audit.riskLevel ?? 0) >= 4;
-  const summary = blocked
-    ? `BLOCKED: audit ${audit.riskLevelEnum ?? audit.riskLevel} — no LP/stake intent`
-    : `Add LP on BSC testnet (chain ${B402_TESTNET_CHAIN_ID}) for ${token.symbol ?? token.contractAddress} / USD1 after Desk receipt. Not mainnet.`;
+  const amount = Math.min(EARN_DEPOSIT_MAX_USDT, Math.max(0, usdtLeftover));
+  const inBand = amount >= EARN_DEPOSIT_MIN_USDT && amount <= EARN_DEPOSIT_MAX_USDT;
+  const sized = inBand ? amount : EARN_DEPOSIT_MIN_USDT;
   return {
-    action: "lp-add",
+    action: "earn-deposit",
     chain: "bsc-testnet",
     chainId: B402_TESTNET_CHAIN_ID,
     dryRun: true,
     walletSkillInstalled: installed,
-    summary,
-    bawCommand: `baw defi preview --json --chain ${B402_TESTNET_CHAIN_ID} --action lp-add --token ${token.contractAddress}`,
+    amountUsdt: sized,
+    summary: `Park leftover ${sized.toFixed(2)} USDT as a DeFi Earn deposit INTENT on BSC testnet. Not mainnet.`,
+    bawCommand: `baw defi preview --json --chain ${B402_TESTNET_CHAIN_ID} --action deposit --token ${USDT_BSC} --amount ${sized}`,
     note: installed
-      ? "binance-agentic-wallet / baw detected — still dry-run unless the operator confirms outside this demo."
+      ? "binance-agentic-wallet / baw detected — preview only until --confirm-defi. Demo never broadcasts."
       : `Write skill not installed. Install via: npx skills add ${SKILLS_HUB_REPO} — demo stays dry-run.`,
   };
 }
 
-export async function runOnchainWorkflow(): Promise<OnchainRun> {
+export async function runOnchainWorkflow(leftoverUsdt = EARN_DEPOSIT_MIN_USDT): Promise<OnchainRun> {
   const token = await inspectToken("USDT");
   const audit = await auditToken(token.chainId, token.contractAddress);
-  const intent = proposeDefiIntent(token, audit);
+  const intent = proposeEarnDeposit(leftoverUsdt);
   const adapters = [
     ...PUBLISHED_READ_SKILLS.map((s) => `${s}${skillCliPath(s) ? " (cli)" : " (http/docs adapter)"}`),
     `${WRITE_SKILL}${intent.walletSkillInstalled ? " (present, unused)" : " (absent)"}`,

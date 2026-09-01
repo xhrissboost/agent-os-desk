@@ -3,7 +3,7 @@ export type Side = "BUY" | "SELL" | "HOLD";
 export type Venue = "spot" | "margin" | "convert" | "um-futures" | "cm-futures";
 
 export type DataSource = {
-  kind: "rest" | "mcp" | "fixture" | "bazaar" | "skills-hub" | "mock";
+  kind: "rest" | "mcp" | "fixture" | "bazaar" | "skills-hub" | "mock" | "merchant";
   host?: string;
   note?: string;
 };
@@ -61,6 +61,14 @@ export type SupportResistance = {
   distToResistancePct: number;
 };
 
+export type SpotFilters = {
+  symbol: string;
+  minNotional: number;
+  minQty: number;
+  stepSize: number;
+  source: DataSource;
+};
+
 export type Balance = {
   asset: string;
   free: number;
@@ -71,6 +79,7 @@ export type PortfolioInsight = {
   source: DataSource;
   balances: Balance[];
   totalUsd: number;
+  usdtFree: number;
   weights: Array<{ asset: string; usd: number; weightPct: number }>;
   estimatedPnl24hUsd: number;
   concentration: string;
@@ -85,6 +94,45 @@ export type MarketRow = {
   funding: FundingPrint | null;
   levels: SupportResistance;
   source: DataSource;
+};
+
+export type SkillSignal = {
+  source: DataSource;
+  summary: string;
+  stub: boolean;
+};
+
+export type TokenInspect = {
+  chainId: string;
+  contractAddress: string;
+  name?: string;
+  symbol?: string;
+  priceUsd?: number;
+  change24hPct?: number;
+  liquidityUsd?: number;
+  source: DataSource;
+};
+
+export type TokenAudit = {
+  hasResult: boolean;
+  isSupported: boolean;
+  riskLevelEnum?: string;
+  riskLevel?: number;
+  buyTax?: string;
+  sellTax?: string;
+  hits: string[];
+  honeypot: boolean;
+  source: DataSource;
+};
+
+export type AlphaReport = {
+  symbol: string;
+  row: MarketRow;
+  filters: SpotFilters;
+  token: TokenInspect;
+  audit: TokenAudit;
+  skillSignal: SkillSignal;
+  portfolio: PortfolioInsight;
 };
 
 export type Signal = {
@@ -121,13 +169,13 @@ export type TradeIntent = {
     symbol: string;
     side: Exclude<Side, "HOLD">;
     type: "MARKET";
-    quantity: string;
+    quantity?: string;
     quoteOrderQty: string;
   };
 };
 
 export type ExecutionResult = {
-  mode: "dry-run" | "blocked" | "live-blocked-no-mcp";
+  mode: "dry-run" | "blocked" | "live-blocked-no-mcp" | "waiting-confirm";
   payload: TradeIntent | Record<string, never>;
   note: string;
 };
@@ -178,55 +226,47 @@ export type PaymentTraceStep = {
 };
 
 export type PaymentReceipt = {
-  settlement: "mock";
+  settlement: "mock" | "merchant";
   chainId: number;
   network: string;
   payer: "Desk";
   payee: "Counterparty";
   amount: string;
+  amountUsd: number;
   asset: string;
   txHash: string;
   settledAt: string;
   resource: string;
 };
 
+export type GatedMemo = {
+  title: string;
+  body: string;
+  symbol: string;
+};
+
 export type PaymentRun = {
+  rail: "merchant" | "bazaar";
   bazaarSource: DataSource;
   listed: number;
+  cheapListings: number;
   picked: BazaarResource | null;
   requirement: PaymentRequired;
+  amountUsd: number;
+  readyToSign: boolean;
+  signatureHeader: string;
+  memo: GatedMemo | null;
   trace: PaymentTraceStep[];
-  receipt: PaymentReceipt;
-};
-
-export type TokenInspect = {
-  chainId: string;
-  contractAddress: string;
-  name?: string;
-  symbol?: string;
-  priceUsd?: number;
-  change24hPct?: number;
-  liquidityUsd?: number;
-  source: DataSource;
-};
-
-export type TokenAudit = {
-  hasResult: boolean;
-  isSupported: boolean;
-  riskLevelEnum?: string;
-  riskLevel?: number;
-  buyTax?: string;
-  sellTax?: string;
-  hits: string[];
-  source: DataSource;
+  receipt: PaymentReceipt | null;
 };
 
 export type DefiIntent = {
-  action: "lp-add" | "stake";
+  action: "earn-deposit";
   chain: "bsc-testnet";
   chainId: 97;
   dryRun: boolean;
   walletSkillInstalled: boolean;
+  amountUsdt: number;
   summary: string;
   bawCommand: string;
   note: string;
@@ -253,17 +293,38 @@ export type McpStatus = {
   note: string;
 };
 
+export type Confirms = {
+  pay: boolean;
+  spot: boolean;
+  defi: boolean;
+};
+
+export type ChecklistItem = {
+  id: string;
+  ok: boolean;
+  gate: boolean;
+  label: string;
+  detail: string;
+};
+
+export type Checklist = {
+  items: ChecklistItem[];
+  hardPass: boolean;
+  liveBlocked: boolean;
+};
+
 export type DemoReport = {
   generatedAt: string;
+  loop: "ScoutPay";
+  symbol: string;
   mcp: McpStatus;
-  data: {
-    rows: MarketRow[];
-    portfolio: PortfolioInsight;
-  };
+  confirms: Confirms;
+  checklist: Checklist;
+  data: AlphaReport;
+  payments: PaymentRun;
   trading: {
     signal: Signal;
     execution: ExecutionResult;
   };
-  payments: PaymentRun;
   onchain: OnchainRun;
 };

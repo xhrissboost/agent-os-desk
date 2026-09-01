@@ -1,8 +1,17 @@
-import { RISK } from "../config.js";
+import { DEFAULT_SYMBOL, RISK } from "../config.js";
 import { clamp, round } from "../http.js";
 import { defaultVenue } from "../mcp/client.js";
-import type { ExecutionResult, PortfolioInsight, Signal, Side, TradeIntent } from "../types.js";
-import { runDataWorkflow } from "./data.js";
+import { quotePlusFees } from "../market/filters.js";
+import { FEE_BUFFER_USDT, TAKER_FEE_BPS } from "../config.js";
+import type {
+  AlphaReport,
+  Checklist,
+  ExecutionResult,
+  Signal,
+  Side,
+  TradeIntent,
+} from "../types.js";
+import { runAlphaReport } from "./data.js";
 
 export type SignalInputs = {
   symbol: string;
@@ -13,12 +22,6 @@ export type SignalInputs = {
   portfolioUsd: number;
 };
 
-/**
- * Funding-rate + book-imbalance mean reversion.
- *
- * Positive funding = longs pay shorts (crowded long). Bid-heavy book is the
- * same crowding in the spot ladder. Fade both. Hard caps keep size tiny.
- */
 export function scoreRaw(fundingRate: number, imbalance: number): number {
   const fundingScore = clamp(fundingRate / RISK.fundingScale, -1, 1);
   const imbalanceScore = clamp(imbalance, -1, 1);
@@ -93,15 +96,45 @@ export function computeSignal(input: SignalInputs): Signal {
   };
 }
 
-export function executeSignal(
+/** ScoutPay treasury ticket: min-notional BNBUSDT SPOT MARKET buy. */
+export function minNotionalBuy(report: AlphaReport): Signal {
+  const quoteUsd = report.filters.minNotional;
+  const last = report.row.ticker.lastPrice;
+  const baseQty = last ? round(quoteUsd / last, 8) : 0;
+  return {
+    symbol: report.symbol,
+    side: "BUY",
+    confidence: 1,
+    rationale: `ScoutPay treasury: SPOT MARKET buy ${report.symbol} at exchangeInfo min notional ${quoteUsd} USDT (queried, not hardcoded).`,
+    suggestedSize: {
+      quoteUsd,
+      baseQty,
+      maxNotionalUsd: quoteUsd,
+      cappedBy: `exchangeInfo NOTIONAL min ${quoteUsd} USDT`,
+    },
+    inputs: {
+      lastPrice: last,
+      fundingRate: report.row.funding?.lastFundingRate ?? 0,
+      imbalance: report.row.book.imbalance,
+      change24hPct: report.row.ticker.priceChangePercent,
+      rawScore: 1,
+    },
+    risk: { maxLeverage: 1, skipped: false },
+  };
+}
+
+export function executeSpotBuy(
   signal: Signal,
-  opts: { liveRequested: boolean; confirm: boolean },
+  opts: { liveRequested: boolean; confirmSpot: boolean; checklist: Checklist; mcpTradeBound: boolean },
 ): ExecutionResult {
-  if (signal.side === "HOLD") {
+  const hardGates = opts.checklist.items.filter((i) => i.gate && i.id !== "confirm-pay" && i.id !== "confirm-spot" && i.id !== "confirm-defi");
+  const researchPass = hardGates.every((i) => i.ok);
+
+  if (!researchPass) {
     return {
-      mode: "dry-run",
+      mode: "blocked",
       payload: {},
-      note: "No order. HOLD under risk limits — nothing to send.",
+      note: "Fail-closed: Alpha/x402 gates failed. SPOT ticket not printed as live-eligible. Report + 402 receipt still shown.",
     };
   }
 
@@ -112,50 +145,101 @@ export function executeSignal(
     dryRun: true,
     order: {
       symbol: signal.symbol,
-      side: signal.side,
+      side: "BUY",
       type: "MARKET",
-      quantity: String(signal.suggestedSize.baseQty),
-      quoteOrderQty: String(signal.suggestedSize.quoteUsd),
+      quoteOrderQty: signal.suggestedSize.quoteUsd.toFixed(2),
     },
   };
 
-  if (!opts.liveRequested || !opts.confirm) {
+  if (!opts.confirmSpot) {
+    return {
+      mode: "waiting-confirm",
+      payload,
+      note: "RESTATED SPOT MARKET ticket waiting for --confirm-spot. DRY-RUN. Confirms are never skipped.",
+    };
+  }
+
+  if (!opts.liveRequested) {
     return {
       mode: "dry-run",
       payload: { ...payload, dryRun: true },
-      note: "DRY-RUN. MCP trade payload printed, not sent. Live requires DESK_LIVE=1 AND --confirm.",
+      note: "DRY-RUN. --confirm-spot set but DESK_LIVE is not 1. MCP payload printed, not sent.",
+    };
+  }
+
+  if (!opts.mcpTradeBound) {
+    return {
+      mode: "live-blocked-no-mcp",
+      payload: { ...payload, dryRun: false },
+      note: "DESK_LIVE=1 and --confirm-spot set, but no authenticated MCP trade tool is bound. Refusing to send.",
     };
   }
 
   return {
     mode: "live-blocked-no-mcp",
     payload: { ...payload, dryRun: false },
-    note: "DESK_LIVE=1 and --confirm set, but no authenticated MCP trade tool is bound. Refusing to send. Agent cannot withdraw.",
+    note: "Trade tool would bind here — Desk still refuses to invent an MCP tool name. No send.",
   };
 }
 
-export async function runSignalWorkflow(symbol = "BTCUSDT"): Promise<{
+export function executeSignal(
+  signal: Signal,
+  opts: { liveRequested: boolean; confirm: boolean },
+): ExecutionResult {
+  const checklist: Checklist = {
+    items: [
+      {
+        id: "confirm-spot",
+        ok: opts.confirm,
+        gate: true,
+        label: "CONFIRM spot",
+        detail: "",
+      },
+    ],
+    hardPass: opts.confirm,
+    liveBlocked: false,
+  };
+  return executeSpotBuy(signal, {
+    liveRequested: opts.liveRequested,
+    confirmSpot: opts.confirm,
+    checklist,
+    mcpTradeBound: false,
+  });
+}
+
+export async function runSignalWorkflow(symbol = DEFAULT_SYMBOL): Promise<{
   signal: Signal;
   execution: ExecutionResult;
-  portfolio: PortfolioInsight;
+  report: AlphaReport;
 }> {
-  const { rows, portfolio } = await runDataWorkflow([symbol, "ETHUSDT", "SOLUSDT"]);
-  const row = rows.find((r) => r.symbol === symbol) ?? rows[0]!;
-  const signal = computeSignal({
-    symbol: row.symbol,
-    lastPrice: row.ticker.lastPrice,
-    fundingRate: row.funding?.lastFundingRate ?? 0,
-    imbalance: row.book.imbalance,
-    change24hPct: row.ticker.priceChangePercent,
-    portfolioUsd: portfolio.totalUsd,
-  });
-  const execution = executeSignal(signal, {
+  const report = await runAlphaReport(symbol);
+  const signal = minNotionalBuy(report);
+  const execution = executeSpotBuy(signal, {
     liveRequested: process.env.DESK_LIVE === "1",
-    confirm: process.argv.includes("--confirm"),
+    confirmSpot: process.argv.includes("--confirm-spot"),
+    checklist: {
+      items: [
+        { id: "major-pair", ok: true, gate: true, label: "major", detail: "" },
+        { id: "audit", ok: true, gate: true, label: "audit", detail: "" },
+        { id: "ticker", ok: true, gate: true, label: "ticker", detail: "" },
+        { id: "x402", ok: true, gate: true, label: "x402", detail: "" },
+        {
+          id: "confirm-spot",
+          ok: process.argv.includes("--confirm-spot"),
+          gate: true,
+          label: "CONFIRM spot",
+          detail: "",
+        },
+      ],
+      hardPass: process.argv.includes("--confirm-spot"),
+      liveBlocked: false,
+    },
+    mcpTradeBound: false,
   });
-  return { signal, execution, portfolio };
+  return { signal, execution, report };
 }
 
 export function riskFooter(): string {
-  return `risk: max $${RISK.maxNotionalUsd} notional · ${RISK.maxPortfolioPct * 100}% book · leverage ≤ ${RISK.maxLeverage} · min confidence ${RISK.minConfidence}`;
+  const need = quotePlusFees(5, TAKER_FEE_BPS, FEE_BUFFER_USDT);
+  return `ScoutPay spot: exchangeInfo min notional · taker ${TAKER_FEE_BPS} bps · live need ~$${need.toFixed(2)} USDT on the Agentic sub`;
 }

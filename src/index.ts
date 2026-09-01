@@ -1,10 +1,13 @@
-export { DESK_VERSION, MCP_ENDPOINT, RISK } from "./config.js";
+export { DESK_VERSION, MCP_ENDPOINT, RISK, LOOP_NICKNAME } from "./config.js";
 export { BinanceMcpClient, mcpStatus } from "./mcp/client.js";
-export { runDataWorkflow, loadMarketRow } from "./workflows/data.js";
-export { computeSignal, executeSignal, runSignalWorkflow, scoreRaw } from "./workflows/trading.js";
+export { runDataWorkflow, loadMarketRow, runAlphaReport } from "./workflows/data.js";
+export { computeSignal, executeSignal, executeSpotBuy, minNotionalBuy, runSignalWorkflow, scoreRaw } from "./workflows/trading.js";
 export { runPaymentWorkflow, buildPaymentRequired, mockSettle, parseBazaarEnvelope } from "./workflows/payments.js";
 export { runOnchainWorkflow } from "./workflows/onchain.js";
 export { runDemo } from "./workflows/demo.js";
 export { formatDemoReport } from "./report.js";
 export { parseTicker24h, parseDepth, parseKlines, parsePremiumIndex } from "./market/parse.js";
+export { parseSpotFilters } from "./market/filters.js";
 export { bookLevels } from "./market/levels.js";
+export { buildChecklist } from "./checklist.js";
+export { parseConfirms } from "./confirms.js";

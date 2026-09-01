@@ -109,8 +109,8 @@ Do not substitute another id.
 
 1. Fund the **Agentic virtual sub** yourself (Profile → Sub-account Asset Management). The agent cannot pull from main.
 2. Treat that balance as the max loss. Binance does not publish a separate MCP max-loss.
-3. Every non-read stays confirm-first. Desk additionally requires `DESK_LIVE=1` and `--confirm`.
-4. Track B (spot + futures + margin/convert) is the authorized trading surface — not this repo's default demo.
+3. Every non-read stays confirm-first. Desk never treats a bare `--confirm` as yes. Live rails need **`--confirm-pay`**, **`--confirm-spot`**, and **`--confirm-defi`** separately, plus `DESK_LIVE=1` for a spot send.
+4. **Track B** is a **separate first-10k race** (~$40k USDC): connect this MCP and complete authorized **spot + futures + convert** with about **80 USDT** in the Agentic sub. **Do not execute Track B trades in this repo.** Desk's demo is Track A ScoutPay (pay-for-alpha treasury loop) and stays dry-run.
 
 To point Desk at an already-completed OAuth session:
 
