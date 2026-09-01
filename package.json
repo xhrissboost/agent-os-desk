@@ -1,0 +1,57 @@
+{
+  "name": "@desk/agent",
+  "version": "1.0.0",
+  "description": "Desk — Binance Agent Native / Agent OS Track A desk: analysis → risk-limited signal → agent payment → onchain intent.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "desk": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "skills",
+    "README.md",
+    "CONNECT.md",
+    "DEMO.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "predemo": "npm run build",
+    "demo": "node dist/cli.js demo",
+    "prestart": "npm run build",
+    "start": "node dist/cli.js",
+    "lint": "eslint src test",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "binance",
+    "agent-native",
+    "mcp",
+    "x402",
+    "b402",
+    "desk"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xhrissboost/agent-os-desk.git"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.35.0",
+    "@types/node": "^22.18.0",
+    "eslint": "^9.35.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.43.0"
+  }
+}
