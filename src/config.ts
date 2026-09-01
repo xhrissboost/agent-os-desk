@@ -1,4 +1,4 @@
-export const DESK_VERSION = "1.1.0";
+export const DESK_VERSION = "1.2.0";
 export const LOOP_NICKNAME = "ScoutPay";
 export const GITHUB_URL = "https://github.com/xhrissboost/agent-os-desk";
 
@@ -36,6 +36,26 @@ export const DEMO_SYMBOLS = DEFAULT_SYMBOLS;
 export const KLINE_INTERVAL = "1h";
 export const KLINE_LIMIT = 24;
 export const DEPTH_LIMIT = 20;
+
+/**
+ * BTC model-calibration panel (Track A Data).
+ * Screenshot families, not a reverse-engineer of their weights.
+ * Event: P(close[t+H] > close[t]) over H future 1h bars; features from L lookback bars.
+ */
+export const CALIB_SYMBOL = "BTCUSDT";
+export const CALIB_INTERVAL = "1h";
+export const CALIB_BARS = 2000;
+export const CALIB_HORIZONS = [1, 2, 3, 4, 5] as const;
+export const CALIB_LOOKBACKS = [1, 2, 3, 4, 5] as const;
+export const CALIB_BASELINE_HORIZONS = [4, 5] as const;
+/** |bias| below this (and N ≥ CALIB_N_SUFFICIENT) → 基本靠谱. */
+export const CALIB_RELIABLE_PT = 3;
+/** |bias| below this → 吻合但没优势; ≥ this → 明显高估 / 明显低估. */
+export const CALIB_AGREE_PT = 6;
+export const CALIB_N_SUFFICIENT = 30;
+export const CALIB_CACHE_DIR = ".cache";
+export const CALIB_ARTIFACT_DIR = "artifacts";
+export const CALIB_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 /** BSC Testnet — B402 / x402 demo settlement target. Never mainnet money. */
 export const B402_TESTNET_CHAIN_ID = 97;
@@ -84,6 +104,6 @@ export const SAMPLE_PORTFOLIO = [
   { asset: "BNB", free: "0", locked: "0" },
 ] as const;
 
-export const SKILL_UA = "desk-agent/1.1.0 (Track-A)";
+export const SKILL_UA = "desk-agent/1.2.0 (Track-A)";
 export const WEB3_SKILL_UA = "binance-web3/2.0 (Skill)";
 export const WEB3_AUDIT_UA = "binance-web3/1.4 (Skill)";

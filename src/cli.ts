@@ -6,6 +6,7 @@ import { banner, fundingPct, pct, usd } from "./format.js";
 import { mcpStatus } from "./mcp/client.js";
 import { printDemo } from "./workflows/demo.js";
 import { runAlphaReport } from "./workflows/data.js";
+import { formatCalibrationAnsi, writeCalibrationArtifacts } from "./calibration/heatmap.js";
 import { riskFooter, runSignalWorkflow } from "./workflows/trading.js";
 import { runPaymentWorkflow } from "./workflows/payments.js";
 import { runOnchainWorkflow } from "./workflows/onchain.js";
@@ -13,8 +14,8 @@ import { runOnchainWorkflow } from "./workflows/onchain.js";
 function usage(): string {
   return `${banner("DESK", `${LOOP_NICKNAME} · pay-for-alpha treasury loop`)}
 Usage:
-  desk demo          ScoutPay loop (judge path): Alpha Report → 402 memo → min-notional SPOT → Earn intent
-  desk brief         Alpha Report only (BNBUSDT)
+  desk demo          ScoutPay loop (judge path): BTC calibration → 402 memo → min-notional SPOT → Earn intent
+  desk brief         BTC calibration heatmap + BNBUSDT ticker (Data)
   desk signal        Restated BNBUSDT SPOT MARKET min-notional ticket
   desk pay           x402 v2 merchant 402 → PAYMENT-SIGNATURE → gated memo
   desk chain         DeFi Earn deposit INTENT (1–5 USDT leftover)
@@ -70,10 +71,18 @@ async function main(argv: string[]): Promise<number> {
       return printDemo(argv);
     case "brief": {
       const data = await runAlphaReport(DEFAULT_SYMBOL);
+      try {
+        writeCalibrationArtifacts(data.calibration);
+      } catch {
+        /* artifacts are best-effort for the film path */
+      }
       emit(data, asJson, () => {
         const row = data.row;
+        const cal = data.calibration;
         return [
-          banner("DESK brief", "Alpha Report"),
+          banner("DESK brief", "BTC calibration · Alpha Report"),
+          formatCalibrationAnsi(cal, { full: true }),
+          "",
           `${row.symbol}  last ${usd(row.ticker.lastPrice)}  24h ${pct(row.ticker.priceChangePercent)}  imb ${row.book.imbalance.toFixed(3)}  fund ${row.funding ? fundingPct(row.funding.lastFundingRate) : "n/a"}  src ${row.source.host ?? row.source.kind}`,
           `minNotional ${data.filters.minNotional} USDT`,
           `audit ${data.audit.riskLevelEnum ?? "n/a"}  ${data.skillSignal.summary}`,

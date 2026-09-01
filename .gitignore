@@ -10,3 +10,5 @@ coverage/
 .idea/
 .vscode/
 .desk-cache/
+.cache/
+artifacts/

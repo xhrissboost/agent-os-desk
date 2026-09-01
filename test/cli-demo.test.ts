@@ -8,6 +8,7 @@ import { FIXTURE_EXCHANGE_INFO } from "../src/market/fixtures.js";
 import { buildChecklist } from "../src/checklist.js";
 import { parseConfirms } from "../src/confirms.js";
 import { merchantRespond, merchantRequirement, demoPaymentSignature } from "../src/payments/merchant.js";
+import { passingStubPanel } from "../src/calibration/panel.js";
 import type { AlphaReport, DemoReport } from "../src/types.js";
 
 function sampleReport(): AlphaReport {
@@ -66,11 +67,12 @@ function sampleReport(): AlphaReport {
       concentration: "USDT",
       notes: [],
     },
+    calibration: passingStubPanel(),
   };
 }
 
 describe("CLI demo", () => {
-  it("desk demo exits 0 and prints the ScoutPay loop", { timeout: 90_000 }, async () => {
+  it("desk demo exits 0 and prints the ScoutPay loop", { timeout: 120_000 }, async () => {
     const chunks: string[] = [];
     const orig = process.stdout.write.bind(process.stdout);
     process.stdout.write = ((chunk: string | Uint8Array) => {
@@ -85,6 +87,8 @@ describe("CLI demo", () => {
     }
     const out = chunks.join("");
     assert.match(out, /Alpha Report/);
+    assert.match(out, /标的 BTC/);
+    assert.match(out, /广义加性逻辑模型|高斯朴素贝叶斯|梯度提升树/);
     assert.match(out, /402/);
     assert.match(out, /SPOT MARKET/);
     assert.match(out, /Earn deposit/);
@@ -173,6 +177,7 @@ describe("CLI demo", () => {
     } satisfies DemoReport;
     const text = formatDemoReport(report);
     assert.match(text, /Alpha Report/);
+    assert.match(text, /标的 BTC/);
     assert.match(text, /402 → Alpha Memo/);
     assert.match(text, /SPOT MARKET/);
     assert.match(text, /Earn deposit INTENT/);
@@ -262,6 +267,41 @@ describe("checklist fail-closed", () => {
     assert.deepEqual(ignored, { pay: false, spot: false, defi: false });
     const named = parseConfirms(["demo", "--confirm-pay", "--confirm-spot", "--confirm-defi"]);
     assert.deepEqual(named, { pay: true, spot: true, defi: true });
+  });
+
+  it("fails closed when BTC short-horizon cells are majority 明显高估", () => {
+    const payment = {
+      rail: "merchant" as const,
+      bazaarSource: { kind: "merchant" as const },
+      listed: 0,
+      cheapListings: 0,
+      picked: null,
+      requirement: merchantRequirement(),
+      amountUsd: 0.25,
+      readyToSign: true,
+      signatureHeader: "x",
+      memo: null,
+      trace: [],
+      receipt: null,
+    };
+    const report = sampleReport();
+    for (const c of report.calibration.selected.cells) {
+      if (c.horizon <= 2) {
+        c.status = "overconfident";
+        c.n = 80;
+      }
+    }
+    report.calibration.gateOk = false;
+    report.calibration.gateDetail = "test majority 明显高估";
+    const c = buildChecklist({
+      symbol: "BNBUSDT",
+      report,
+      payment,
+      confirms: { pay: true, spot: true, defi: true },
+      live: false,
+    });
+    assert.equal(c.items.find((i) => i.id === "btc-calibration")?.ok, false);
+    assert.equal(c.hardPass, false);
   });
 });
 
