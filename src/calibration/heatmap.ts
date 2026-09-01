@@ -45,7 +45,7 @@ function summaryLine(g: CalibGrid): string {
 }
 
 function gridAnsi(grid: CalibGrid, lookbacks: readonly number[], selected: boolean): string {
-  const width = 16;
+  const width = 20;
   const horizons = [...new Set(grid.cells.map((c) => c.horizon))].sort((a, b) => a - b);
   const star = selected ? "  ★ selected" : "";
   const lines = [` ${grid.zh}  ${grid.en}${star}`, ` ${summaryLine(grid)}`];
